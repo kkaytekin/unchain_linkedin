@@ -1,0 +1,85 @@
+name: Build Firefox Extension
+
+on:
+  push:
+    paths:
+      - 'firefox/src/**'
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Check for changes in firefox/src
+      id: changes
+      run: |
+        if git diff --quiet HEAD~1 HEAD -- firefox/src/ 2>/dev/null || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          echo "changed=true" >> $GITHUB_OUTPUT
+        else
+          echo "changed=false" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Get version from manifest
+      if: steps.changes.outputs.changed == 'true'
+      id: version
+      run: |
+        VERSION=$(grep '"version"' firefox/src/manifest.json | sed 's/.*"version": *"\([^"]*\)".*/\1/')
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+    - name: Build extension
+      if: steps.changes.outputs.changed == 'true'
+      run: |
+        cd firefox/src
+        zip -r ../unchain_linkedin.xpi manifest.json content.js
+
+    - name: Check if tag exists
+      if: steps.changes.outputs.changed == 'true'
+      id: tag_check
+      run: |
+        if git tag | grep -q "^v${{ steps.version.outputs.version }}$"; then
+          echo "exists=true" >> $GITHUB_OUTPUT
+        else
+          echo "exists=false" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Create Release
+      if: steps.changes.outputs.changed == 'true' && steps.tag_check.outputs.exists == 'false'
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: v${{ steps.version.outputs.version }}
+        name: Extension v${{ steps.version.outputs.version }}
+        body: |
+          ## Unchain LinkedIn Extension v${{ steps.version.outputs.version }}
+
+          Auto-generated release with updated Firefox extension.
+
+          ### Installation
+          - Download `unchain_linkedin.xpi`
+          - In Firefox: `about:addons` → gear icon → "Install Add-on From File"
+
+          ### Changes
+          Extension source files in `firefox/src/` have been updated.
+        files: |
+          firefox/unchain_linkedin.xpi
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Commit updated XPI (if no tag created)
+      if: steps.changes.outputs.changed == 'true' && steps.tag_check.outputs.exists == 'true'
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add firefox/unchain_linkedin.xpi
+        git commit -m "Update extension build v${{ steps.version.outputs.version }}" || exit 0
+        git push
