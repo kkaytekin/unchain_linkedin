@@ -1,0 +1,20 @@
+{
+  "manifest_version": 2,
+  "name": "Unchain LinkedIn",
+  "version": "1.0",
+  "description": "Remove LinkedIn news feed to reduce distractions",
+
+  // TODO: sign application - add applications.gecko.id for .xpi distribution
+
+  "permissions": [
+    "https://www.linkedin.com/*"
+  ],
+
+  "content_scripts": [
+    {
+      "matches": ["https://www.linkedin.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_end"
+    }
+  ]
+}
